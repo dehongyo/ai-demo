@@ -1,0 +1,42 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: minimal-agent
+  datasource:
+    url: jdbc:postgresql://localhost:5432/minimal_agent
+    username: agent
+    password: agent_dev
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+app:
+  llm:
+    api-key: ${DASHSCOPE_API_KEY:}
+    base-url: ${BAILIAN_BASE_URL:}
+    model: ${BAILIAN_MODEL:qwen3.6-plus}
+    connect-timeout: 5s
+    response-timeout: 60s
+    max-retries: 2
+  agent:
+    max-steps: 8
+    recent-message-count: 12
+    compress-message-threshold: 30
+    context-token-budget: 12000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    com.example.minagent: DEBUG
