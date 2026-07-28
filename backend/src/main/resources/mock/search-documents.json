@@ -1,0 +1,38 @@
+[
+  {
+    "title": "Agent Loop 设计模式",
+    "snippet": "Agent Loop 是一个由感知、思考、行动、观察组成的循环过程。每次迭代中，Agent 接收观察结果，通过 LLM 推理决定下一步行动，执行工具调用，然后将工具结果作为新的观察输入下一轮。最大步数限制可以防止无限循环。",
+    "source": "internal-docs",
+    "keywords": ["agent", "loop", "设计模式", "循环", "感知", "行动", "观察"]
+  },
+  {
+    "title": "Spring Boot 微服务入门",
+    "snippet": "Spring Boot 是一个基于 Java 的开源框架，用于快速构建独立的、生产级别的 Spring 应用。它提供了自动配置、起步依赖和内嵌服务器，大幅简化了 Spring 应用的搭建和开发过程。",
+    "source": "internal-docs",
+    "keywords": ["spring", "boot", "java", "微服务", "框架", "自动配置"]
+  },
+  {
+    "title": "React 函数组件与 Hooks",
+    "snippet": "React 是一个用于构建用户界面的 JavaScript 库。函数组件是 React 推荐的组件编写方式，配合 Hooks 可以实现状态管理、副作用处理等功能。常用的 Hooks 包括 useState、useEffect、useContext 等。",
+    "source": "internal-docs",
+    "keywords": ["react", "hooks", "函数组件", "javascript", "前端", "ui"]
+  },
+  {
+    "title": "Function Calling 机制详解",
+    "snippet": "Function Calling 允许 LLM 根据用户输入自主决定调用预定义的工具函数。模型返回函数名和参数 JSON，由应用程序执行后将结果送回模型以生成最终回答。这是 Agent 实现工具调用的核心机制。",
+    "source": "internal-docs",
+    "keywords": ["function", "calling", "tool", "工具", "调用", "api", "llm"]
+  },
+  {
+    "title": "Context 窗口与压缩策略",
+    "snippet": "LLM 的上下文窗口有限，长对话需要上下文压缩。常见策略包括：保留最近 N 条消息、生成对话摘要、使用滑动窗口。压缩时应保留关键事实、用户目标和未完成事项，删除寒暄和过时信息。",
+    "source": "internal-docs",
+    "keywords": ["context", "上下文", "压缩", "窗口", "token", "摘要"]
+  },
+  {
+    "title": "Session 隔离与多用户管理",
+    "snippet": "多用户场景下，每个用户的 Session 必须完全隔离。通过 userId + sessionId 双重校验确保数据安全。同一 Session 内的消息、摘要、待办事项按 Session 隔离。前端通过 X-User-Id header 标识用户身份。",
+    "source": "internal-docs",
+    "keywords": ["session", "隔离", "多用户", "安全", "userId"]
+  }
+]
