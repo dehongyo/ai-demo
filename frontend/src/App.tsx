@@ -1,11 +1,12 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
+import SessionPage from "./pages/SessionPage";
+import "./index.css";
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<h1>Minimal Agent</h1>} />
-      </Routes>
-    </BrowserRouter>
+    <Routes>
+      <Route path="/" element={<SessionPage />} />
+      <Route path="/sessions/:sessionId" element={<SessionPage />} />
+    </Routes>
   );
 }
