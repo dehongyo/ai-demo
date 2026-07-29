@@ -97,6 +97,7 @@ public class AgentRuntime {
 
             boolean repairUsed = false;
             List<UUID> savedToolCallMessageIds = new ArrayList<>();
+            // 5. Run loop
 
             for (int stepNumber = 1; stepNumber <= properties.getMaxSteps(); stepNumber++) {
                 log.debug("Step {}/{} for run {}", stepNumber, properties.getMaxSteps(), runId);

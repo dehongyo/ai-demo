@@ -29,29 +29,29 @@
 
 ## 2. 题目要求映射
 
-| 题目要求 | 设计落点 | 验收证据 |
-|---|---|---|
-| 从零实现核心 Agent Runtime | `AgentRuntime`、`LlmGateway`、`LlmOutputParser`、`ToolRegistry` 自研 | 依赖树、核心循环源码、单元测试 |
-| 接收用户输入 | `POST /api/sessions/{id}/messages` | 前端聊天、接口测试 |
-| 判断直接回复或调用工具 | 百炼 Function Calling + `LlmOutputParser` | 直接回答与 `tool_calls` 两类 Trace |
-| 调用工具 | `ToolRegistry.execute` | ToolExecution 数据与 Trace 卡片 |
-| 根据工具结果继续或返回 | 工具结果作为 `role=tool` 再次进入循环 | 多步调用测试 |
-| 至少三个工具 | calculator、mock_search、weather、todo | `/api/tools` 返回四个 Schema |
-| 工具名称、描述、参数 Schema | `ToolDefinition` | Schema 快照测试 |
-| LLM 基于 Schema 自主决策 | 请求体 `tools` + `tool_choice=auto` | MockWebServer 请求断言、真实 API 演示 |
-| 输出解析 | `LlmOutputParser` | content/tool_calls/异常 JSON 测试 |
-| 多 Session 隔离 | userId + sessionId 双重校验 | 两窗口交叉访问测试 |
-| 持续对话记忆 | 消息持久化 + Session Summary | 重启后继续追问测试 |
-| 纯对话追问 | 最近对话进入 Context | “它有什么优点？”用例 |
-| 带工具追问 | 工具结果持久化并召回 | “那上海呢？”用例 |
-| 最大轮次 | `maxSteps=8` | 死循环模型响应测试 |
-| Context 压缩 | 旧消息摘要 + 最近消息窗口 | 长会话压缩测试 |
-| 基本异常处理 | 参数、工具、模型、数据库、限流分类 | 异常矩阵 |
-| 工具 Trace / 执行日志 | `agent_runs`、`agent_steps`、`tool_executions` | 前端 Trace 抽屉、日志 |
-| 使用真实 LLM API | 百炼 OpenAI-compatible API | 环境变量与真实 API 冒烟测试 |
-| 测试用例 | 单元、集成、端到端、真实 API smoke | 测试报告 |
-| README | 本文第 19 节给出最终 README 要求 | 仓库根目录 README |
-| AI Prompt 与问题解决记录 | 第 15、20 节 | `docs/prompts.md`、`docs/problem-solving.md` |
+| 题目要求                    | 设计落点                                                                     | 验收证据                                         |
+| --------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------ |
+| 从零实现核心 Agent Runtime  | `AgentRuntime`、`LlmGateway`、`LlmOutputParser`、`ToolRegistry` 自研 | 依赖树、核心循环源码、单元测试                   |
+| 接收用户输入                | `POST /api/sessions/{id}/messages`                                         | 前端聊天、接口测试                               |
+| 判断直接回复或调用工具      | 百炼 Function Calling +`LlmOutputParser`                                   | 直接回答与`tool_calls` 两类 Trace              |
+| 调用工具                    | `ToolRegistry.execute`                                                     | ToolExecution 数据与 Trace 卡片                  |
+| 根据工具结果继续或返回      | 工具结果作为`role=tool` 再次进入循环                                       | 多步调用测试                                     |
+| 至少三个工具                | calculator、mock_search、weather、todo                                       | `/api/tools` 返回四个 Schema                   |
+| 工具名称、描述、参数 Schema | `ToolDefinition`                                                           | Schema 快照测试                                  |
+| LLM 基于 Schema 自主决策    | 请求体`tools` + `tool_choice=auto`                                       | MockWebServer 请求断言、真实 API 演示            |
+| 输出解析                    | `LlmOutputParser`                                                          | content/tool_calls/异常 JSON 测试                |
+| 多 Session 隔离             | userId + sessionId 双重校验                                                  | 两窗口交叉访问测试                               |
+| 持续对话记忆                | 消息持久化 + Session Summary                                                 | 重启后继续追问测试                               |
+| 纯对话追问                  | 最近对话进入 Context                                                         | “它有什么优点？”用例                           |
+| 带工具追问                  | 工具结果持久化并召回                                                         | “那上海呢？”用例                               |
+| 最大轮次                    | `maxSteps=8`                                                               | 死循环模型响应测试                               |
+| Context 压缩                | 旧消息摘要 + 最近消息窗口                                                    | 长会话压缩测试                                   |
+| 基本异常处理                | 参数、工具、模型、数据库、限流分类                                           | 异常矩阵                                         |
+| 工具 Trace / 执行日志       | `agent_runs`、`agent_steps`、`tool_executions`                         | 前端 Trace 抽屉、日志                            |
+| 使用真实 LLM API            | 百炼 OpenAI-compatible API                                                   | 环境变量与真实 API 冒烟测试                      |
+| 测试用例                    | 单元、集成、端到端、真实 API smoke                                           | 测试报告                                         |
+| README                      | 本文第 19 节给出最终 README 要求                                             | 仓库根目录 README                                |
+| AI Prompt 与问题解决记录    | 第 15、20 节                                                                 | `docs/prompts.md`、`docs/problem-solving.md` |
 
 ---
 
@@ -94,29 +94,29 @@
 
 ### 4.1 后端
 
-| 组件 | 选择 | 原因 |
-|---|---|---|
-| Java | 21 | LTS，支持 record、sealed interface、虚拟线程等现代能力 |
-| Spring Boot | 4.1.0 | 当前稳定线；只使用 Web、Validation、JPA、Actuator 等基础设施能力 |
-| Web/API | Spring MVC | 与阻塞式 JPA 模型一致，降低 MVP 并发复杂度 |
-| HTTP client | `WebClient` | 通过 `spring-webflux` 模块单独使用客户端，直接构造百炼 HTTP 请求 |
-| JSON | Jackson | DTO、工具参数和 JSON Schema 处理 |
-| ORM | Spring Data JPA | 降低持久化样板代码，不参与 Agent 决策 |
-| Migration | Flyway | 数据库结构可复现 |
-| Database | PostgreSQL 17 | Session、消息和 Trace 持久化 |
-| Test DB | H2 + Testcontainers PostgreSQL | 快速单测 + 真实方言集成测试 |
-| LLM mock | OkHttp MockWebServer | 精确断言发送给百炼的请求体 |
+| 组件        | 选择                           | 原因                                                              |
+| ----------- | ------------------------------ | ----------------------------------------------------------------- |
+| Java        | 21                             | LTS，支持 record、sealed interface、虚拟线程等现代能力            |
+| Spring Boot | 4.1.0                          | 当前稳定线；只使用 Web、Validation、JPA、Actuator 等基础设施能力  |
+| Web/API     | Spring MVC                     | 与阻塞式 JPA 模型一致，降低 MVP 并发复杂度                        |
+| HTTP client | `WebClient`                  | 通过`spring-webflux` 模块单独使用客户端，直接构造百炼 HTTP 请求 |
+| JSON        | Jackson                        | DTO、工具参数和 JSON Schema 处理                                  |
+| ORM         | Spring Data JPA                | 降低持久化样板代码，不参与 Agent 决策                             |
+| Migration   | Flyway                         | 数据库结构可复现                                                  |
+| Database    | PostgreSQL 17                  | Session、消息和 Trace 持久化                                      |
+| Test DB     | H2 + Testcontainers PostgreSQL | 快速单测 + 真实方言集成测试                                       |
+| LLM mock    | OkHttp MockWebServer           | 精确断言发送给百炼的请求体                                        |
 
 ### 4.2 前端
 
-| 组件 | 选择 | 原因 |
-|---|---|---|
-| React | 19.2 | 当前稳定版本 |
-| TypeScript | strict mode | 约束接口与 SSE 事件 |
-| Vite | 当前稳定版本 | 快速开发与构建 |
-| Router | React Router | Session URL 可恢复 |
-| Data fetching | 原生 `fetch` + 小型 API client | MVP 不额外引入状态框架 |
-| Test | Vitest + Testing Library | 组件与交互测试 |
+| 组件          | 选择                            | 原因                   |
+| ------------- | ------------------------------- | ---------------------- |
+| React         | 19.2                            | 当前稳定版本           |
+| TypeScript    | strict mode                     | 约束接口与 SSE 事件    |
+| Vite          | 当前稳定版本                    | 快速开发与构建         |
+| Router        | React Router                    | Session URL 可恢复     |
+| Data fetching | 原生`fetch` + 小型 API client | MVP 不额外引入状态框架 |
+| Test          | Vitest + Testing Library        | 组件与交互测试         |
 
 ### 4.3 为什么不使用 Spring AI
 
@@ -463,14 +463,14 @@ public record ParsedLlmOutput(
 
 ### 7.6 重试策略
 
-| 情况 | 策略 |
-|---|---|
+| 情况                         | 策略                                                    |
+| ---------------------------- | ------------------------------------------------------- |
 | HTTP 408、429、502、503、504 | 最多重试 2 次，等待约 500ms、1500ms，并加入少量随机抖动 |
-| HTTP 400 | 不重试，记录参数错误 |
-| HTTP 401、403 | 不重试，提示检查 Key、Base URL、地域与业务空间 |
-| 网络连接中断 | 最多重试 2 次 |
-| 读取超时 | 最多重试 1 次 |
-| JSON 反序列化失败 | 不做 HTTP 重试，进入一次模型输出修复 |
+| HTTP 400                     | 不重试，记录参数错误                                    |
+| HTTP 401、403                | 不重试，提示检查 Key、Base URL、地域与业务空间          |
+| 网络连接中断                 | 最多重试 2 次                                           |
+| 读取超时                     | 最多重试 1 次                                           |
+| JSON 反序列化失败            | 不做 HTTP 重试，进入一次模型输出修复                    |
 
 百炼限流按主账号聚合，429 不应高频立即重试。
 
@@ -677,12 +677,12 @@ public final class ToolRegistry {
 
 固定数据：
 
-| 城市 | 天气 | 温度 | 湿度 |
-|---|---|---:|---:|
-| 北京 | 晴 | 28°C | 35% |
-| 上海 | 多云 | 30°C | 68% |
-| 杭州 | 小雨 | 27°C | 76% |
-| 深圳 | 雷阵雨 | 31°C | 81% |
+| 城市 | 天气   |  温度 | 湿度 |
+| ---- | ------ | ----: | ---: |
+| 北京 | 晴     | 28°C |  35% |
+| 上海 | 多云   | 30°C |  68% |
+| 杭州 | 小雨   | 27°C |  76% |
+| 深圳 | 雷阵雨 | 31°C |  81% |
 
 未知城市返回 `CITY_NOT_FOUND`，并告诉模型当前可查询的城市。
 
@@ -779,13 +779,13 @@ sessionService.requireOwnedSession(userId, sessionId);
 
 ### 10.4 Memory 的召回时机与放置方式
 
-| Memory | 召回时机 | 放置位置 | 原因 |
-|---|---|---|---|
-| Session summary | 每次 LLM 调用 | System Prompt 后的独立 system message | 提供长期背景 |
-| 最近消息 | 每次 LLM 调用 | 按原角色顺序 | 支持代词和连续追问 |
+| Memory                                 | 召回时机                         | 放置位置                                                | 原因                           |
+| -------------------------------------- | -------------------------------- | ------------------------------------------------------- | ------------------------------ |
+| Session summary                        | 每次 LLM 调用                    | System Prompt 后的独立 system message                   | 提供长期背景                   |
+| 最近消息                               | 每次 LLM 调用                    | 按原角色顺序                                            | 支持代词和连续追问             |
 | assistant tool call + 工具 observation | 当前 run 后续 step；以后成对召回 | `role=assistant` 的 `tool_calls` 后接 `role=tool` | 保持百炼协议完整并支持工具追问 |
-| Todo 状态 | 仅当模型调用 todo 工具 | 工具结果 | 业务状态不靠自然语言记忆 |
-| Trace | 不召回 | 仅前端调试与审计 | 避免上下文污染 |
+| Todo 状态                              | 仅当模型调用 todo 工具           | 工具结果                                                | 业务状态不靠自然语言记忆       |
+| Trace                                  | 不召回                           | 仅前端调试与审计                                        | 避免上下文污染                 |
 
 关键原则：事实性业务状态放数据库；对话相关语义放消息或摘要；运行诊断放 Trace。
 
@@ -1211,20 +1211,20 @@ export const DEMO_USER_A = "11111111-1111-1111-1111-111111111111";
 
 ### 15.1 异常分类
 
-| 异常 | 用户结果 | Runtime 行为 | Trace |
-|---|---|---|---|
-| 空消息/超长消息 | 400 | 不创建 run | request log |
-| Session 不存在或不属于用户 | 404 | 不调用 LLM | security log |
-| Session 正忙 | 409 | 不调用 LLM | active run id |
-| 未知工具 | 继续 loop | observation 告知模型 | `UNKNOWN_TOOL` |
-| 参数 Schema 不合法 | 继续 loop | observation 告知模型 | `INVALID_ARGUMENTS` |
-| 工具内部失败 | 继续或最终解释 | 不抛裸异常 | tool error |
-| 百炼 401/403 | 502 | 立即停止 | 配置类错误，脱敏 |
-| 百炼 429/5xx | 503 | 有限重试后停止 | retry count |
-| LLM 超时 | 504 | 有限重试后停止 | duration |
-| LLM 响应不可解析 | 修复一次 | 再失败安全停止 | excerpt，限制长度 |
-| 达到 maxSteps | 返回可解释结果 | 停止 | `MAX_STEPS` |
-| Context 压缩失败 | 不影响本轮 | 下次再压缩 | warning |
+| 异常                       | 用户结果       | Runtime 行为         | Trace                 |
+| -------------------------- | -------------- | -------------------- | --------------------- |
+| 空消息/超长消息            | 400            | 不创建 run           | request log           |
+| Session 不存在或不属于用户 | 404            | 不调用 LLM           | security log          |
+| Session 正忙               | 409            | 不调用 LLM           | active run id         |
+| 未知工具                   | 继续 loop      | observation 告知模型 | `UNKNOWN_TOOL`      |
+| 参数 Schema 不合法         | 继续 loop      | observation 告知模型 | `INVALID_ARGUMENTS` |
+| 工具内部失败               | 继续或最终解释 | 不抛裸异常           | tool error            |
+| 百炼 401/403               | 502            | 立即停止             | 配置类错误，脱敏      |
+| 百炼 429/5xx               | 503            | 有限重试后停止       | retry count           |
+| LLM 超时                   | 504            | 有限重试后停止       | duration              |
+| LLM 响应不可解析           | 修复一次       | 再失败安全停止       | excerpt，限制长度     |
+| 达到 maxSteps              | 返回可解释结果 | 停止                 | `MAX_STEPS`         |
+| Context 压缩失败           | 不影响本轮     | 下次再压缩           | warning               |
 
 ### 15.2 日志字段
 
@@ -1411,30 +1411,30 @@ minimal-agent/
 
 ### 18.2 必须通过的测试矩阵
 
-| ID | 场景 | 输入/设置 | 期望 |
-|---|---|---|---|
-| T01 | 直接回复 | “你好” | 0 次工具调用，保存最终答案 |
-| T02 | calculator | “12.5 加 7.5 再乘 3” | 调用 calculator，结果 60 |
-| T03 | calculator 除零 | “10/0 等于多少” | 工具返回错误，Agent 解释不可除零 |
-| T04 | mock_search | “搜索 Agent Loop 的资料” | 返回确定性搜索结果 |
-| T05 | weather | “杭州天气如何” | weather 参数为杭州 |
-| T06 | todo create/list | “记下周五交周报”后追问“我的待办？” | 能列出相同内容 |
-| T07 | 多工具串联 | “查杭州天气并记得带伞” | weather → todo → final |
-| T08 | 纯对话追问 | “Spring Boot 是什么？”→“它适合这个项目吗？” | 第二问理解“它” |
-| T09 | 工具追问 | “北京天气？”→“上海呢？” | 第二问调用 weather(city=上海) |
-| T10 | Session 隔离 | A 的 S1、S2 分别写入不同 todo | 两边 list 互不出现 |
-| T11 | 用户隔离 | 用户 B 读取用户 A Session | 404，且不调用 LLM |
-| T12 | 未知工具 | mock LLM 返回 `delete_all` | 工具不执行，进入纠错 |
-| T13 | arguments 非法 JSON | mock LLM 返回破损 arguments | 不崩溃，修复或安全结束 |
-| T14 | maxSteps | mock LLM 永远调用工具 | 第 8 step 后 `MAX_STEPS` |
-| T15 | LLM 429 | 前两次 429，第三次成功 | 按策略重试并成功 |
-| T16 | LLM 401 | 返回 401 | 不重试，错误信息不含 Key |
-| T17 | Context 压缩 | 35 条旧消息 | 最近 12 条 + 摘要进入请求 |
-| T18 | 压缩失败 | summary LLM 超时 | 当前聊天仍完成 |
-| T19 | Session 并发 | 同 Session 同时提交两条 | 一个成功，一个 409 |
-| T20 | 服务重启恢复 | 写消息后重启应用 | 历史和 todo 仍存在 |
-| T21 | Trace 完整性 | 多工具请求 | 每个 step/tool 都有耗时与状态 |
-| T22 | Prompt injection | 用户要求泄露系统 Prompt/Key | 不泄露，不执行越权动作 |
+| ID  | 场景                | 输入/设置                                        | 期望                             |
+| --- | ------------------- | ------------------------------------------------ | -------------------------------- |
+| T01 | 直接回复            | “你好”                                         | 0 次工具调用，保存最终答案       |
+| T02 | calculator          | “12.5 加 7.5 再乘 3”                           | 调用 calculator，结果 60         |
+| T03 | calculator 除零     | “10/0 等于多少”                                | 工具返回错误，Agent 解释不可除零 |
+| T04 | mock_search         | “搜索 Agent Loop 的资料”                       | 返回确定性搜索结果               |
+| T05 | weather             | “杭州天气如何”                                 | weather 参数为杭州               |
+| T06 | todo create/list    | “记下周五交周报”后追问“我的待办？”           | 能列出相同内容                   |
+| T07 | 多工具串联          | “查杭州天气并记得带伞”                         | weather → todo → final         |
+| T08 | 纯对话追问          | “Spring Boot 是什么？”→“它适合这个项目吗？” | 第二问理解“它”                 |
+| T09 | 工具追问            | “北京天气？”→“上海呢？”                     | 第二问调用 weather(city=上海)    |
+| T10 | Session 隔离        | A 的 S1、S2 分别写入不同 todo                    | 两边 list 互不出现               |
+| T11 | 用户隔离            | 用户 B 读取用户 A Session                        | 404，且不调用 LLM                |
+| T12 | 未知工具            | mock LLM 返回`delete_all`                      | 工具不执行，进入纠错             |
+| T13 | arguments 非法 JSON | mock LLM 返回破损 arguments                      | 不崩溃，修复或安全结束           |
+| T14 | maxSteps            | mock LLM 永远调用工具                            | 第 8 step 后`MAX_STEPS`        |
+| T15 | LLM 429             | 前两次 429，第三次成功                           | 按策略重试并成功                 |
+| T16 | LLM 401             | 返回 401                                         | 不重试，错误信息不含 Key         |
+| T17 | Context 压缩        | 35 条旧消息                                      | 最近 12 条 + 摘要进入请求        |
+| T18 | 压缩失败            | summary LLM 超时                                 | 当前聊天仍完成                   |
+| T19 | Session 并发        | 同 Session 同时提交两条                          | 一个成功，一个 409               |
+| T20 | 服务重启恢复        | 写消息后重启应用                                 | 历史和 todo 仍存在               |
+| T21 | Trace 完整性        | 多工具请求                                       | 每个 step/tool 都有耗时与状态    |
+| T22 | Prompt injection    | 用户要求泄露系统 Prompt/Key                      | 不泄露，不执行越权动作           |
 
 ### 18.3 LlmOutputParser 核心测试
 
@@ -1918,17 +1918,17 @@ MVP 全部完成后再考虑：
 
 ## 24. 风险与应对
 
-| 风险 | 影响 | 应对 |
-|---|---|---|
-| 模型不稳定选择工具 | 演示波动 | 清晰 Schema、低 temperature、确定性 mock、回归集 |
-| 百炼模型名或 Base URL 随地域变化 | 401/404 | 全部配置化，README 强调 Key 与 Base URL 同地域 |
-| 模型重复创建 todo | 重复数据 | 返回完整成功结果、Prompt 约束、可选幂等键 |
-| Context 越来越长 | 成本与延迟增加 | 摘要 + 最近窗口 + token budget |
-| Session 串线 | 严重隐私问题 | userId + sessionId 查询、越权测试 |
-| 原始 CoT 暴露 | 安全与合规问题 | 仅保存事实性决策摘要 |
-| Trace 过大 | 数据库增长 | 截断工具结果、后续加保留策略 |
-| 429 限流 | 请求失败 | 有限指数退避、禁止无限重试 |
-| 同 Session 并发 | 消息顺序错乱 | keyed lock + 409 |
+| 风险                             | 影响           | 应对                                             |
+| -------------------------------- | -------------- | ------------------------------------------------ |
+| 模型不稳定选择工具               | 演示波动       | 清晰 Schema、低 temperature、确定性 mock、回归集 |
+| 百炼模型名或 Base URL 随地域变化 | 401/404        | 全部配置化，README 强调 Key 与 Base URL 同地域   |
+| 模型重复创建 todo                | 重复数据       | 返回完整成功结果、Prompt 约束、可选幂等键        |
+| Context 越来越长                 | 成本与延迟增加 | 摘要 + 最近窗口 + token budget                   |
+| Session 串线                     | 严重隐私问题   | userId + sessionId 查询、越权测试                |
+| 原始 CoT 暴露                    | 安全与合规问题 | 仅保存事实性决策摘要                             |
+| Trace 过大                       | 数据库增长     | 截断工具结果、后续加保留策略                     |
+| 429 限流                         | 请求失败       | 有限指数退避、禁止无限重试                       |
+| 同 Session 并发                  | 消息顺序错乱   | keyed lock + 409                                 |
 
 ---
 
