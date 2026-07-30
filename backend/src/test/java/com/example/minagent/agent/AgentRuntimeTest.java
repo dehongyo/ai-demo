@@ -160,22 +160,39 @@ class AgentRuntimeTest {
     }
 
     @Test
-    void terminatesWhenAllToolsFail() {
+    void terminatesWhenAllToolsFailUnrecoverable() {
         // LLM 返回 tool call
         when(llmGateway.chat(anyList(), anyList()))
-                .thenReturn(toolCallResponse("weather", "{\"city\":\"火星\"}"));
-        // 工具执行失败
+                .thenReturn(toolCallResponse("weather", "{\"city\":\"杭州\"}"));
+        // 工具返回不可恢复的 TOOL_ERROR
         when(toolExecutor.execute(any(), any()))
-                .thenReturn(ToolResult.failure("CITY_NOT_FOUND", "未知城市: 火星"));
+                .thenReturn(ToolResult.failure("TOOL_ERROR", "内部服务错误"));
 
         AgentRunResult result = runtime.run(new AgentRunCommand(
-                USER_A, session.getId(), "火星天气如何"));
+                USER_A, session.getId(), "杭州天气如何"));
 
-        // 全部工具失败 → Runtime 直接终止，不再调 LLM 进行第二轮
+        // 不可恢复的失败 → Runtime 直接终止，不再调 LLM 进行第二轮
         assertThat(result.status()).isEqualTo("COMPLETED");
-        assertThat(result.answer()).contains("失败", "火星");
+        assertThat(result.answer()).contains("失败");
         // 只调了一次 LLM（没有第二轮）
         verify(llmGateway, times(1)).chat(anyList(), anyList());
+    }
+
+    @Test
+    void continuesWhenFailureIsRecoverable() {
+        // LLM 第一步调了一个不存在的工具
+        when(llmGateway.chat(anyList(), anyList()))
+                .thenReturn(toolCallResponse("unknown_tool", "{}"))
+                .thenReturn(textResponse("对不起，我没有找到合适的工具"));
+        when(toolExecutor.execute(any(), any()))
+                .thenReturn(ToolResult.failure("UNKNOWN_TOOL", "未知工具: unknown_tool"));
+
+        AgentRunResult result = runtime.run(new AgentRunCommand(
+                USER_A, session.getId(), "帮我做一件事"));
+
+        // 可恢复的失败（UNKNOWN_TOOL）→ CONTINUE，LLM 在第二步有机会修正
+        assertThat(result.status()).isEqualTo("COMPLETED");
+        verify(llmGateway, times(2)).chat(anyList(), anyList());
     }
 
     @Test

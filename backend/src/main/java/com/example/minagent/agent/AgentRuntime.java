@@ -281,26 +281,23 @@ public class AgentRuntime {
     /**
      * 根据工具执行结果判断：继续 loop（CONTINUE）还是直接终止（TERMINATE）。
      *
-     * 终止条件：
-     *   规则 1: 本轮所有工具全部执行失败 → TERMINATE
-     *          不浪费一轮 LLM 调用去"让模型知道工具失败了"，
-     *          直接由 Runtime 生成错误摘要返回给用户。
+     * 终止条件（只有"不可恢复"的场景才终止，放过"可让 LLM 修正"的场景）:
      *
-     *   规则 2: 工具返回了特定的"任务完成"信号 → TERMINATE
-     *          ToolResult.code() == "TASK_COMPLETED" 表示该工具声明任务结束。
+     *   规则 1: 所有工具失败，且失败类型为"不可恢复" → TERMINATE
+     *           UNKNOWN_TOOL → CONTINUE（LLM 可能在下一步选对工具）
+     *           INVALID_ARGUMENTS → CONTINUE（LLM 可以修正参数重试）
+     *           TOOL_ERROR / 不可恢复 → TERMINATE（内部错误，重试无意义）
      *
-     * 否则 → CONTINUE，让 LLM 阅读工具结果并自主决策下一轮。
+     *   规则 2: 工具返回 TASK_COMPLETED → TERMINATE
+     *
+     *   规则 3: 部分成功 + 部分可恢复失败 → CONTINUE
+     *           让 LLM 阅读失败结果，决定：修正参数重试 / 换一种工具 / 告诉用户限制
+     *
+     * 否则 → CONTINUE
      */
     private ToolExecutionOutcome evaluateToolResults(
             List<AgentDecision.RequestedToolCall> calls,
             List<ToolResult> results) {
-
-        // 规则 1: 全部失败 → 终止，不再浪费 LLM 调用
-        boolean allFailed = results.stream().noneMatch(ToolResult::success);
-        if (allFailed) {
-            log.info("All {} tool(s) in this step failed, terminating run", results.size());
-            return ToolExecutionOutcome.TERMINATE;
-        }
 
         // 规则 2: 任一工具返回 TASK_COMPLETED → 终止
         boolean anyTaskCompleted = results.stream()
@@ -310,8 +307,42 @@ public class AgentRuntime {
             return ToolExecutionOutcome.TERMINATE;
         }
 
-        // 默认: 继续 loop
+        // 统计失败分布
+        long failedCount = results.stream().filter(r -> !r.success()).count();
+        if (failedCount == 0) {
+            // 全部成功 → LLM 自主判断下一步（可能新增工具、可能结束）
+            return ToolExecutionOutcome.CONTINUE;
+        }
+
+        // 将失败分为"可恢复"和"不可恢复"两类
+        long recoverableFailures = results.stream()
+                .filter(r -> !r.success())
+                .filter(r -> isRecoverable(r.code()))
+                .count();
+        long unrecoverableFailures = failedCount - recoverableFailures;
+
+        // 有不可恢复的失败 → 终止
+        if (unrecoverableFailures > 0) {
+            log.info("{} unrecoverable tool failure(s) detected, terminating run", unrecoverableFailures);
+            return ToolExecutionOutcome.TERMINATE;
+        }
+
+        // 全部是可恢复的失败 → CONTINUE，让 LLM 修正
+        // （如 UNKNOWN_TOOL → 模型下一步选对工具）
+        // （如 INVALID_ARGUMENTS → 模型修正参数重试）
+        log.info("{} recoverable tool failure(s) detected, continuing loop for LLM correction", recoverableFailures);
         return ToolExecutionOutcome.CONTINUE;
+    }
+
+    /**
+     * 判断工具错误码是否为"可恢复"——即 LLM 修正后有可能在下一次调用成功。
+     */
+    private boolean isRecoverable(String errorCode) {
+        return "UNKNOWN_TOOL".equals(errorCode)
+                || "INVALID_ARGUMENTS".equals(errorCode)
+                || "CITY_NOT_FOUND".equals(errorCode)
+                || "INVALID_EXPRESSION".equals(errorCode)
+                || "DIVISION_BY_ZERO".equals(errorCode);
     }
 
     /**
@@ -337,7 +368,7 @@ public class AgentRuntime {
         }
 
         if (results.stream().noneMatch(ToolResult::success)) {
-            sb.append("\n所有工具调用均失败，请检查参数后重试，或尝试换一种方式描述你的需求。");
+            sb.append("\n工具执行遇到不可恢复的错误，请稍后重试。");
         }
         return sb.toString();
     }
