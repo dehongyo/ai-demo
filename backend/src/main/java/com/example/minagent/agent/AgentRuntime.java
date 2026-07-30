@@ -14,14 +14,23 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class AgentRuntime {
 
     private static final Logger log = LoggerFactory.getLogger(AgentRuntime.class);
+
+    /**
+     * 工具执行后的 Runtime 自主判断结果。
+     * —— CONTINUE: 工具结果交给 LLM，继续下一轮 loop（默认行为）
+     * —— TERMINATE: 无需再问 LLM，直接返回结果给用户
+     */
+    enum ToolExecutionOutcome {
+        CONTINUE,
+        TERMINATE
+    }
 
     private static final String SYSTEM_PROMPT = """
             你是 Minimal Agent，一个可靠、简洁的任务助手。
@@ -96,6 +105,8 @@ public class AgentRuntime {
             workingMessages.add(LlmMessage.user(command.content()));
 
             boolean repairUsed = false;
+            String lastToolFingerprint = null;   // 上一次工具调用的指纹（name + args），用于检测回环
+            int loopDetectCount = 0;             // 连续相同指纹的次数
             List<UUID> savedToolCallMessageIds = new ArrayList<>();
             // 5. Run loop
 
@@ -141,6 +152,26 @@ public class AgentRuntime {
                 // Tool calls
                 AgentDecision.ToolCallsDecision toolDecision = (AgentDecision.ToolCallsDecision) decision;
 
+                // ★ 回环检测：同一工具+同一参数连续调用
+                String currentFingerprint = buildFingerprint(toolDecision.calls());
+                if (currentFingerprint.equals(lastToolFingerprint)) {
+                    loopDetectCount++;
+                } else {
+                    loopDetectCount = 0;
+                }
+                lastToolFingerprint = currentFingerprint;
+
+                if (loopDetectCount >= 2) {
+                    // 连续 3 次（初次 + 2 次重复）调用完全相同的工具和参数 → 回环
+                    log.warn("Run {} detected tool loop: {} repeated {} times", runId, currentFingerprint, loopDetectCount + 1);
+                    String stopMsg = "检测到工具重复调用，已自动停止。请重新描述你的问题。";
+                    ChatMessage stopMessage = ChatMessage.assistant(
+                            UUID.randomUUID(), session, stopMsg,
+                            sessionService.nextSequenceNo(command.sessionId()));
+                    sessionService.saveMessage(stopMessage);
+                    return AgentRunResult.error(runId, stopMsg);
+                }
+
                 List<LlmToolCall> responseToolCalls = response.choices().getFirst().message().toolCalls();
 
                 // Save assistant tool call message
@@ -156,6 +187,7 @@ public class AgentRuntime {
 
                 // Execute each tool
                 ToolContext toolCtx = new ToolContext(command.userId(), command.sessionId(), runId);
+                List<ToolResult> stepResults = new ArrayList<>();
                 for (AgentDecision.RequestedToolCall call : toolDecision.calls()) {
                     ToolResult result = toolExecutor.execute(call, toolCtx);
 
@@ -169,7 +201,22 @@ public class AgentRuntime {
                     // Add to working messages
                     workingMessages.add(LlmMessage.tool(
                             call.callId(), call.toolName(), result.modelMessage()));
+
+                    stepResults.add(result);
                 }
+
+                // ★ Runtime 自主判断：根据工具结果决定继续 loop 还是直接终止
+                ToolExecutionOutcome outcome = evaluateToolResults(toolDecision.calls(), stepResults);
+                if (outcome == ToolExecutionOutcome.TERMINATE) {
+                    String summary = buildTerminationSummary(toolDecision.calls(), stepResults);
+                    log.info("Run {} terminated by Runtime judgement: all tools failed", runId);
+                    ChatMessage assistantMsg = ChatMessage.assistant(
+                            UUID.randomUUID(), session, summary,
+                            sessionService.nextSequenceNo(command.sessionId()));
+                    sessionService.saveMessage(assistantMsg);
+                    return AgentRunResult.completed(runId, assistantMsg.getId(), summary);
+                }
+                // outcome == CONTINUE: 工具结果回传 LLM，进入下一轮 loop（默认行为）
             }
 
             // Max steps reached
@@ -229,6 +276,81 @@ public class AgentRuntime {
             case TOOL -> LlmMessage.tool(
                     msg.getToolCallId(), msg.getToolName(), msg.getContent());
         };
+    }
+
+    /**
+     * 根据工具执行结果判断：继续 loop（CONTINUE）还是直接终止（TERMINATE）。
+     *
+     * 终止条件：
+     *   规则 1: 本轮所有工具全部执行失败 → TERMINATE
+     *          不浪费一轮 LLM 调用去"让模型知道工具失败了"，
+     *          直接由 Runtime 生成错误摘要返回给用户。
+     *
+     *   规则 2: 工具返回了特定的"任务完成"信号 → TERMINATE
+     *          ToolResult.code() == "TASK_COMPLETED" 表示该工具声明任务结束。
+     *
+     * 否则 → CONTINUE，让 LLM 阅读工具结果并自主决策下一轮。
+     */
+    private ToolExecutionOutcome evaluateToolResults(
+            List<AgentDecision.RequestedToolCall> calls,
+            List<ToolResult> results) {
+
+        // 规则 1: 全部失败 → 终止，不再浪费 LLM 调用
+        boolean allFailed = results.stream().noneMatch(ToolResult::success);
+        if (allFailed) {
+            log.info("All {} tool(s) in this step failed, terminating run", results.size());
+            return ToolExecutionOutcome.TERMINATE;
+        }
+
+        // 规则 2: 任一工具返回 TASK_COMPLETED → 终止
+        boolean anyTaskCompleted = results.stream()
+                .anyMatch(r -> "TASK_COMPLETED".equals(r.code()));
+        if (anyTaskCompleted) {
+            log.info("Tool returned TASK_COMPLETED signal, terminating run");
+            return ToolExecutionOutcome.TERMINATE;
+        }
+
+        // 默认: 继续 loop
+        return ToolExecutionOutcome.CONTINUE;
+    }
+
+    /**
+     * 生成工具全失败时的用户友好错误摘要。
+     */
+    private String buildTerminationSummary(
+            List<AgentDecision.RequestedToolCall> calls,
+            List<ToolResult> results) {
+
+        StringBuilder sb = new StringBuilder("工具执行结果如下：\n\n");
+        for (int i = 0; i < calls.size(); i++) {
+            var call = calls.get(i);
+            var result = results.get(i);
+            String status = result.success() ? "✓ 成功" : "✗ 失败 (" + result.code() + ")";
+            sb.append("• ")
+                    .append(call.toolName())
+                    .append(": ")
+                    .append(status)
+                    .append("\n")
+                    .append("  ")
+                    .append(result.modelMessage())
+                    .append("\n");
+        }
+
+        if (results.stream().noneMatch(ToolResult::success)) {
+            sb.append("\n所有工具调用均失败，请检查参数后重试，或尝试换一种方式描述你的需求。");
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 构建工具调用的"指纹"——同一工具名 + 相同参数 → 相同指纹。
+     * 用于检测 LLM 是否陷入了循环调用同一个工具的同一个参数。
+     */
+    private String buildFingerprint(List<AgentDecision.RequestedToolCall> calls) {
+        return calls.stream()
+                .map(c -> c.toolName() + ":" + c.arguments().toString())
+                .sorted()
+                .collect(Collectors.joining("|"));
     }
 
     private String serializeToolCalls(List<LlmToolCall> calls) {

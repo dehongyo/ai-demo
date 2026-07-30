@@ -131,8 +131,12 @@ class AgentRuntimeTest {
 
     @Test
     void stopsAfterMaxSteps() {
+        // 每步返回不同的工具参数，避免触发回环检测
         when(llmGateway.chat(anyList(), anyList()))
-                .thenReturn(toolCallResponse("weather", "{\"city\":\"杭州\"}"));
+                .thenReturn(toolCallResponse("weather", "{\"city\":\"杭州\"}"))
+                .thenReturn(toolCallResponse("weather", "{\"city\":\"北京\"}"))
+                .thenReturn(toolCallResponse("weather", "{\"city\":\"上海\"}"))
+                .thenReturn(toolCallResponse("weather", "{\"city\":\"深圳\"}"));
         when(toolExecutor.execute(any(), any()))
                 .thenReturn(ToolResult.success(null, "weather result"));
 
@@ -153,5 +157,40 @@ class AgentRuntimeTest {
                 .isInstanceOf(SessionNotFoundException.class);
 
         verifyNoInteractions(llmGateway);
+    }
+
+    @Test
+    void terminatesWhenAllToolsFail() {
+        // LLM 返回 tool call
+        when(llmGateway.chat(anyList(), anyList()))
+                .thenReturn(toolCallResponse("weather", "{\"city\":\"火星\"}"));
+        // 工具执行失败
+        when(toolExecutor.execute(any(), any()))
+                .thenReturn(ToolResult.failure("CITY_NOT_FOUND", "未知城市: 火星"));
+
+        AgentRunResult result = runtime.run(new AgentRunCommand(
+                USER_A, session.getId(), "火星天气如何"));
+
+        // 全部工具失败 → Runtime 直接终止，不再调 LLM 进行第二轮
+        assertThat(result.status()).isEqualTo("COMPLETED");
+        assertThat(result.answer()).contains("失败", "火星");
+        // 只调了一次 LLM（没有第二轮）
+        verify(llmGateway, times(1)).chat(anyList(), anyList());
+    }
+
+    @Test
+    void detectsToolLoopAndTerminates() {
+        // LLM 每步都返回完全相同的工具调用
+        when(llmGateway.chat(anyList(), anyList()))
+                .thenReturn(toolCallResponse("weather", "{\"city\":\"杭州\"}"));
+        when(toolExecutor.execute(any(), any()))
+                .thenReturn(ToolResult.success(null, "杭州小雨"));
+
+        AgentRunResult result = runtime.run(new AgentRunCommand(
+                USER_A, session.getId(), "杭州天气如何"));
+
+        // 回环检测触发（连续 3 次相同工具+参数），返回 ERROR
+        assertThat(result.status()).isEqualTo("ERROR");
+        assertThat(result.answer()).contains("重复调用");
     }
 }
